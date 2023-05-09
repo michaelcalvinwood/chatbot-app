@@ -42,7 +42,7 @@ const connectToRedis = async client => {
     console.log(value);
 }
 
-connectToRedis(redisClient);
+connectToRedis(redisClient); 
 
 const app = express();
 app.use(express.static('public'));
