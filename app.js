@@ -29,7 +29,7 @@ const appHost = `app-${SERVER_SERIES}.instantchatbot.net`;
 const { CHUNKS_MYSQL_PASSWORD} = process.env;
 const chunksDb = mysql.connect(chunksHost, 'chunks', CHUNKS_MYSQL_PASSWORD, 'chunks');
 
-var redisClient = redis.createClient(6379, "127.0.0.1"); 
+var redisClient = redis.createClient(6379, "127.0.0.1");  
 
 redisClient.on('error', (err) => console.log('Redis Client Error', err));
 
