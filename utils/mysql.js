@@ -5,7 +5,8 @@ exports.connect = (host, user, password, database, limit = 3) => {
     const db = mysql.createPool({
       connectionLimit : limit, //important
       host, user, password, database,
-      debug: false
+      debug: false,
+      dateStrings: true
     });
 
     db.meta = {

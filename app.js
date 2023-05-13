@@ -27,7 +27,7 @@ const qdrantHost = `qdrant-${SERVER_SERIES}.instantchatbot.net`;
 const appHost = `app-${SERVER_SERIES}.instantchatbot.net`;
 
 const { CONFIG_MYSQL_HOST, CONFIG_MYSQL_DATABASE, CONFIG_MYSQL_USER, CONFIG_MYSQL_PASSWORD } = process.env;
-const configPool = mysql.pool(CONFIG_MYSQL_HOST, CONFIG_MYSQL_DATABASE, CONFIG_MYSQL_USER, CONFIG_MYSQL_PASSWORD);
+const configPool = mysql.connect(CONFIG_MYSQL_HOST, CONFIG_MYSQL_USER, CONFIG_MYSQL_PASSWORD, CONFIG_MYSQL_DATABASE);
 
 const { CHUNKS_MYSQL_PASSWORD} = process.env;
 const chunksDb = mysql.connect(chunksHost, 'chunks', CHUNKS_MYSQL_PASSWORD, 'chunks');
@@ -43,6 +43,8 @@ const connectToRedis = async client => {
     const value = await client.get('greeting');
 
     console.log(value);
+
+    await client.flushAll();
 }
 
 connectToRedis(redisClient); 
@@ -56,21 +58,59 @@ const getUserStats = async userId => {
         console.error(err);
         return false;
     }
-
+    console.log ('redis', result);
+    
     const numKeys = Object.keys(result).length;
+
+    if (numKeys) return {
+        credit: Number(result.credit),
+        date: result.date,
+        storage: Number(result.storage),
+        upload: Number(result.upload),
+        queries: Number(result.queries)
+    }
 
     if (!numKeys) {
         let q = `SELECT credit, next_charge_date, max_storage_mb, upload_mb, queries FROM account WHERE user_id = '${userId}'`;
+        
+        try {
+            result = await mysql.query(configPool, q);
+        } catch (err) {
+            console.error(err);
+            return false;
+        }
+
+        console.log('mysql', result);
+
+        const credit = result[0].credit;
+        const date = result[0].next_charge_date;
+        const storage = result[0].max_storage_mb;
+        const upload = result[0].upload_mb;
+        const queries = result[0].queries;
 
         try {
-
+            result = await redisClient.hSet(userId, 'credit', credit);
+            result = await redisClient.hSet(userId, 'date', date);
+            result = await redisClient.hSet(userId, 'storage', storage);
+            result = await redisClient.hSet(userId, 'upload', upload);
+            result = await redisClient.hSet(userId, 'queries', queries);
+            return {credit, date, storage, upload, queries};
+        } catch (err) {
+            console.error(err);
+            return {credit, date, storage, upload, queries};
         }
     }
 }
 
-setTimeout(() => {
-    getUserStats('50a0ec91-4ef9-4685-af71-4e9c05f4169c');
+setTimeout(async () => {
+    const val = await getUserStats('50a0ec91-4ef9-4685-af71-4e9c05f4169c');
+    console.log('val', val);
 }, 1000)
+
+setTimeout(async () => {
+    const val = await getUserStats('50a0ec91-4ef9-4685-af71-4e9c05f4169c');
+    console.log('val', val);
+}, 2000)
 
 const app = express();
 app.use(express.static('public'));
