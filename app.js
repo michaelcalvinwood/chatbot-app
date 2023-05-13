@@ -26,6 +26,9 @@ const chunksHost = `chunks-${SERVER_SERIES}.instantchatbot.net`;
 const qdrantHost = `qdrant-${SERVER_SERIES}.instantchatbot.net`;
 const appHost = `app-${SERVER_SERIES}.instantchatbot.net`;
 
+const { CONFIG_MYSQL_HOST, CONFIG_MYSQL_DATABASE, CONFIG_MYSQL_USER, CONFIG_MYSQL_PASSWORD } = process.env;
+const configPool = mysql.pool(CONFIG_MYSQL_HOST, CONFIG_MYSQL_DATABASE, CONFIG_MYSQL_USER, CONFIG_MYSQL_PASSWORD);
+
 const { CHUNKS_MYSQL_PASSWORD} = process.env;
 const chunksDb = mysql.connect(chunksHost, 'chunks', CHUNKS_MYSQL_PASSWORD, 'chunks');
 
@@ -44,7 +47,30 @@ const connectToRedis = async client => {
 
 connectToRedis(redisClient); 
 
+const getUserStats = async userId => {
+    let result;
 
+    try {
+        result = await redisClient.hGetAll(userId);
+    } catch (err) {
+        console.error(err);
+        return false;
+    }
+
+    const numKeys = Object.keys(result).length;
+
+    if (!numKeys) {
+        let q = `SELECT credit, next_charge_date, max_storage_mb, upload_mb, queries FROM account WHERE user_id = '${userId}'`;
+
+        try {
+
+        }
+    }
+}
+
+setTimeout(() => {
+    getUserStats('50a0ec91-4ef9-4685-af71-4e9c05f4169c');
+}, 1000)
 
 const app = express();
 app.use(express.static('public'));
@@ -67,6 +93,8 @@ function decodeToken(info) {
 
     return token;
 }
+
+
 
 
 
