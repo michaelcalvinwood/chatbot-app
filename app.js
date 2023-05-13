@@ -5,7 +5,6 @@ const listenPort = 6250;
 const privateKeyPath = `/home/sslkeys/instantchatbot.net.key`;
 const fullchainPath = `/home/sslkeys/instantchatbot.net.pem`;
 
-
 const express = require('express');
 const https = require('https');
 const cors = require('cors');
@@ -19,6 +18,8 @@ const redis = require('redis');
 const qdrant = require('./utils/qdrant');
 const mysql = require('./utils/mysql');
 const openai = require('./utils/openai');
+
+const adminCommands = [];
 
 const {OPENAI_API_KEY, PYMNTS_OPENAI_KEY, JWT_SECRET} = process.env;
 
@@ -238,16 +239,27 @@ const aiQuery = (req, res) => {
     })
 }
 
-const addStorage = async (req, res) => {
-    const { userId, storageAmount } = req.body;
+const handleAdminCommands = async () => {
+    while(1) {
+        if (!adminCommands.length) {
+            await sleep(.25);
+            continue;
+        }
+        
+        const admin = adminCommands.shift();
+        const {command, req, res} = admin;
 
-    if (!userId || !storageAmount) return res.status(400).json('bad request');
-
-    
+        switch (command) {
+            case 'addStorage':
+                await addStorage(req, res);
+                break;
+        }
+    }   
 }
 
+
 app.post('/ai-query', (req, res) => aiQuery(req, res));
-app.post('addStorage', (req, res) => addStorage(req, res));
+app.post('addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
 
 const httpsServer = https.createServer({
     key: fs.readFileSync(privateKeyPath),
