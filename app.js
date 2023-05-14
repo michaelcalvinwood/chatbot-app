@@ -128,6 +128,31 @@ const getUserStats = async userId => {
     }
 }
 
+const getCreditNeeded = (botType, uploadSize, storageSize, queries) => {
+    if (typeof uploadSize === 'string') uploadSize = Number(uploadSize);
+    if (typeof storageSize === 'string') storageSize = Number(storageSize);
+    if (typeof queries === 'string') queries = Number(queries);
+
+    let creditNeeded;
+    let storageMb = Math.ceil(storageSize / 1000000);
+    let uploadMb = Math.ceil(uploadSize / 1000000);
+    let queryChunks = Math.ceil(queries / 1000);
+
+    console.log('mb', storageMb, uploadMb);
+
+    switch (botType) {
+        case 'standard':
+            creditNeeded = (275 * storageMb) + (25 * uploadMb) + (100 * queryChunks);
+            break;
+        default:
+            console.error('creditNeeded Error: Unknown botType', botType);
+            return false;
+    }
+
+    console.log('creditNeeded', creditNeeded);
+    return creditNeeded;
+}
+
 setTimeout(async () => {
     const val = await getUserStats('50a0ec91-4ef9-4685-af71-4e9c05f4169c');
     console.log('val', val);
@@ -274,11 +299,25 @@ const addStorage = async (req, res) => {
 
     console.log('token', token);
 
-    let stats = getUserStats(userId);
+    let stats = await getUserStats(userId);
     if (!stats) return res.status(500).json('addStorage error: Incorrect userId');
-    
+
+    let storage = Number(stats.storage);
+    let credit = Number(stats.credit);
+    let queries = Number(stats.queries);
+    let upload = Number(stats.upload);
+
+    storage += size;
+    upload += size;
+
     console.log('stats', stats);
 
+    let creditNeeded = getCreditNeeded(botType, upload, storage, queries);
+
+    
+
+
+    
     res.status(500).json('debug');
 }
 
@@ -288,15 +327,20 @@ const handleAdminCommands = async () => {
             await sleep(.25);
             continue;
         }
-        
         const admin = adminCommands.shift();
         console.log('admin', admin);
         const {command, req, res} = admin;
-
-        switch (command) {
-            case 'addStorage':
-                await addStorage(req, res);
-                break;
+    
+        try {
+            
+            switch (command) {
+                case 'addStorage':
+                    await addStorage(req, res);
+                    break;
+            }
+        } catch (err) {
+            console.error('handleAdminCommands Error', err);
+            res.status(500).json(`Could not process command: ${command}`);
         }
     }   
 }
