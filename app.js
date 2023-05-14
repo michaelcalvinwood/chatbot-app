@@ -1,5 +1,6 @@
 require('dotenv').config();
-const { SERVER_SERIES } = process.env;
+let { SERVER_SERIES } = process.env;
+SERVER_SERIES = Number(SERVER_SERIES);
 
 const listenPort = 6250;
 const privateKeyPath = `/home/sslkeys/instantchatbot.net.key`;
@@ -15,6 +16,7 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const redis = require('redis');
 
+const jwtUtil = require('./utils/jwt');
 const qdrant = require('./utils/qdrant');
 const mysql = require('./utils/mysql');
 const openai = require('./utils/openai');
@@ -33,6 +35,8 @@ const configPool = mysql.connect(CONFIG_MYSQL_HOST, CONFIG_MYSQL_USER, CONFIG_MY
 const { CHUNKS_MYSQL_PASSWORD} = process.env;
 const chunksDb = mysql.connect(chunksHost, 'chunks', CHUNKS_MYSQL_PASSWORD, 'chunks');
 
+const sleep = seconds => new Promise(r => setTimeout(r, seconds * 1000));
+
 var redisClient = redis.createClient(6379, "127.0.0.1");  
 
 redisClient.on('error', (err) => console.log('Redis Client Error', err));
@@ -49,6 +53,27 @@ const connectToRedis = async client => {
 }
 
 connectToRedis(redisClient); 
+
+const handleSuppliedToken = (bt, res) => {
+    console.log('bt', bt);
+    const tokenInfo = jwtUtil.extractToken(bt, true);
+    if (!tokenInfo.status) {
+        res.status(401).json('unauthorized');
+        return false;
+    }
+
+    const token = tokenInfo.msg;
+
+    console.log('token', token);
+
+    if (token.serverSeries !== SERVER_SERIES) {
+        res.status(400).json(`bad request: serverSeries ${token.serverSeries}:${typeof token.serverSeries} vs ${SERVER_SERIES}:${typeof SERVER_SERIES}`);
+        return false;
+    }
+
+    return token
+}
+
 
 const getUserStats = async userId => {
     let result;
@@ -239,6 +264,24 @@ const aiQuery = (req, res) => {
     })
 }
 
+const addStorage = async (req, res) => {
+    const { size, botToken } = req.body;
+
+    const token = handleSuppliedToken(botToken, res);
+    if (!token) return;
+
+    const { userName, botId, userId, botType } = token;
+
+    console.log('token', token);
+
+    let stats = getUserStats(userId);
+    if (!stats) return res.status(500).json('addStorage error: Incorrect userId');
+    
+    console.log('stats', stats);
+
+    res.status(500).json('debug');
+}
+
 const handleAdminCommands = async () => {
     while(1) {
         if (!adminCommands.length) {
@@ -247,6 +290,7 @@ const handleAdminCommands = async () => {
         }
         
         const admin = adminCommands.shift();
+        console.log('admin', admin);
         const {command, req, res} = admin;
 
         switch (command) {
@@ -257,9 +301,11 @@ const handleAdminCommands = async () => {
     }   
 }
 
+handleAdminCommands();
+
 
 app.post('/ai-query', (req, res) => aiQuery(req, res));
-app.post('addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
+app.post('/addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
 
 const httpsServer = https.createServer({
     key: fs.readFileSync(privateKeyPath),
