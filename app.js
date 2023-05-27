@@ -314,11 +314,11 @@ const addStorage = async (req, res) => {
 
     let creditNeeded = getCreditNeeded(botType, upload, storage, queries);
 
-    
+    if (credit < creditNeeded) {
+        return res.status(402).json('credit needed');
+    }
 
-
-    
-    res.status(500).json('debug');
+    res.status(510).json('debug');
 }
 
 const handleAdminCommands = async () => {
@@ -346,7 +346,6 @@ const handleAdminCommands = async () => {
 }
 
 handleAdminCommands();
-
 
 app.post('/ai-query', (req, res) => aiQuery(req, res));
 app.post('/addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
