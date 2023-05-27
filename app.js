@@ -41,6 +41,10 @@ var redisClient = redis.createClient(6379, "127.0.0.1");
 
 redisClient.on('error', (err) => console.log('Redis Client Error', err));
 
+const storageTokenCost = 275; // per mb of storage
+const uploadCost = 25; // per mb of upload
+const tokenCost = 100; // per 100 queries
+
 const connectToRedis = async client => {
     await client.connect();
 
@@ -77,6 +81,8 @@ const handleSuppliedToken = (bt, res) => {
 
 const getUserStats = async userId => {
     let result;
+
+    console.log('getUserStats userId', userId);
 
     try {
         result = await redisClient.hGetAll(userId);
@@ -127,6 +133,17 @@ const getUserStats = async userId => {
             return {credit, date, storage, upload, queries};
         }
     }
+}
+
+const getCreditsRemaining = async userId => {
+    console.log('getCreditsRemaining userId', userId);
+    const result = await getUserStats(userId);
+   if (result === false) return false;
+
+
+    const creditsUsed = (Math.ceil(result.storage) * storageTokenCost) + (Math.ceil(result.upload) * uploadCost) + (Math.ceil(result.queries/100) * tokenCost);
+
+    return result.credit - creditsUsed;
 }
 
 const getCreditNeeded = (botType, uploadSize, storageSize, queries) => {
@@ -346,6 +363,13 @@ const getAvailableCredits = async (req, res) => {
 
     console.log('getAvailableCredits decodedToken', decodedToken);
 
+    const creditsRemaining = await getCreditsRemaining(decodedToken.userId);
+
+    console.log('getAvailableCredits creditsRemaining', creditsRemaining);
+
+    if (creditsRemaining === false) return res.status(401).json('bad command');
+
+    res.status(200).json(creditsRemaining);
 
 }
 
