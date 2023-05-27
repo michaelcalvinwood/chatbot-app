@@ -106,7 +106,8 @@ const getUserStats = async userId => {
             return false;
         }
 
-        console.log('mysql', result);
+        console.log('getUserStats userId, result', userId, result);
+        if (!result.length) return false;
 
         const credit = result[0].credit;
         const date = result[0].next_charge_date;
@@ -152,16 +153,6 @@ const getCreditNeeded = (botType, uploadSize, storageSize, queries) => {
     console.log('creditNeeded', creditNeeded);
     return creditNeeded;
 }
-
-setTimeout(async () => {
-    const val = await getUserStats('50a0ec91-4ef9-4685-af71-4e9c05f4169c');
-    console.log('val', val);
-}, 1000)
-
-setTimeout(async () => {
-    const val = await getUserStats('50a0ec91-4ef9-4685-af71-4e9c05f4169c');
-    console.log('val', val);
-}, 2000)
 
 const app = express();
 app.use(express.static('public'));
@@ -345,10 +336,24 @@ const handleAdminCommands = async () => {
     }   
 }
 
+const getAvailableCredits = async (req, res) => {
+    const { token } = req.body;
+    console.log('getAvailableCredits token', token);
+
+    if (!token) return res.status(400).json('bad command');
+
+    const decodedToken = jwtUtil.getToken(token);
+
+    console.log('getAvailableCredits decodedToken', decodedToken);
+
+
+}
+
 handleAdminCommands();
 
 app.post('/ai-query', (req, res) => aiQuery(req, res));
 app.post('/addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
+app.post('/availableCredits', (req, res) => getAvailableCredits(req, res));
 
 const httpsServer = https.createServer({
     key: fs.readFileSync(privateKeyPath),
