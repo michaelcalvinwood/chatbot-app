@@ -23,7 +23,10 @@ const openai = require('./utils/openai');
 
 const adminCommands = [];
 
-const {OPENAI_API_KEY, PYMNTS_OPENAI_KEY, JWT_SECRET} = process.env;
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const pendingPurchases = {};
+
+const {OPENAI_API_KEY, PYMNTS_OPENAI_KEY, JWT_SECRET, ORDER_SECRET_KEY} = process.env;
 
 const chunksHost = `chunks-${SERVER_SERIES}.instantchatbot.net`;
 const qdrantHost = `qdrant-${SERVER_SERIES}.instantchatbot.net`;
@@ -130,7 +133,7 @@ const getUserStats = async userId => {
             return {credit, date, storage, upload, queries};
         } catch (err) {
             console.error(err);
-            return {credit, date, storage, upload, queries};
+            return {credit: Number(credit), date, storage: Number(storage), upload: Number(upload), queries: Number(queries)};
         }
     }
 }
@@ -321,9 +324,10 @@ const addStorage = async (req, res) => {
     console.log('stats', stats);
 
     let creditNeeded = getCreditNeeded(botType, upload, storage, queries);
+    const creditsRemaining = await getCreditsRemaining(userId);
 
-    if (credit < creditNeeded) {
-        return res.status(402).json('credit needed');
+    if (creditsRemaining < creditNeeded) {
+        return res.status(402).json({creditNeeded, creditsRemaining});
     }
 
     res.status(510).json('debug');
@@ -373,11 +377,93 @@ const getAvailableCredits = async (req, res) => {
 
 }
 
+
+
+const purchaseCredits = async (req, res) => {
+    url = '/home';
+
+    console.log('req.body', req.body);
+
+    let { userToken, quantity, cost, discount} = req.body;
+
+    if (!userToken || !quantity || !cost || typeof discount === 'undefined') return res.status(400).json('bad request');
+
+    const token = jwtUtil.getToken(userToken);
+
+    console.log('token', token);
+
+    const { userId, userName, email } = token;
+
+    if (isNaN(quantity)) return res.status(400).json('bad request 2');
+    if (isNaN(cost)) return res.status(400).json('bad request 3');
+
+    pendingPurchases[userId] = res;
+
+    quantity = Math.trunc(Number(quantity));
+
+    console.log ('quantity', quantity);
+
+    const session = await stripe.checkout.sessions.create({
+        payment_method_types: [
+            'card'
+        ],
+        mode: 'payment', // 'subscription' would be for recurring charges,
+        success_url: `https://app-${SERVER_SERIES}.instantchatbot.net:6250/successfulPurchase?qty=${quantity}&userId=${userId}&key=${ORDER_SECRET_KEY}`,
+        cancel_url: `https://app-${SERVER_SERIES}.instantchatbot.net:6250/failedPurchase?userId=${userId}&key=${ORDER_SECRET_KEY}`,
+        line_items: [
+            {
+                price_data: {
+                    currency: 'usd',
+                    product_data: {
+                        name: `Instant Chatbot Credit: ${quantity} Tokens`,
+                    },
+                    unit_amount: cost
+                },
+                quantity: 1
+            }
+        ]
+    })
+
+    res.status(200).send(session.url);
+    
+}
+
+const handleSuccessfulPurchase = async (req, res) => {
+    console.log('handleSuccessfulPurchase', req.query, pendingPurchases);
+
+    return;
+
+    const { qty, userId, key } = req.query;
+
+    if (key !== ORDER_SECRET_KEY) {}
+
+    const secretKey = 'b498df3616de9697ded55df1618f4b7e196b0f770ec878098fda719aa9f0295d';
+
+    let request, result;
+
+    request = {
+        url:`ht`
+    }
+
+    try {
+        result = await axios(request);
+    } catch (err) {
+        console.error(err);
+        return res.redirect('https://instantchatbot.net/purchase/?failedPurchase=true');
+    }
+
+}
+
+
 handleAdminCommands();
 
 app.post('/ai-query', (req, res) => aiQuery(req, res));
 app.post('/addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
 app.post('/availableCredits', (req, res) => getAvailableCredits(req, res));
+
+app.post('/purchaseCredits', (req, res) => purchaseCredits (req,res));
+app.get('/successfulPurchase', (req, res) => handleSuccessfulPurchase(req, res));
+app.get('/failedPurchase', (req, res) => handleFailedPurchase(req, res));
 
 const httpsServer = https.createServer({
     key: fs.readFileSync(privateKeyPath),
