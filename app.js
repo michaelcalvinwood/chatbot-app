@@ -441,9 +441,9 @@ const purchaseCredits = async (req, res) => {
 }
 
 const sendPaymentMessage = async (msg, res, error = true) => {
-    if (error) return res.status(400).send(`https://instantchatbot.net/purchase/?status=error&msg=${encodeURIComponent(msg)}`);
+    if (error) return res.redirect(`https://instantchatbot.net/purchase/?status=error&msg=${encodeURIComponent(msg)}`);
 
-    return res.status(200).send(`https://instantchatbot.net/purchase/?status=success&msg=${encodeURIComponent(msg)}`);
+    return res.status(200).redirect(`https://instantchatbot.net/purchase/?status=success&msg=${encodeURIComponent(msg)}`);
 }
 
 const handleSuccessfulPurchase = async (req, res) => {
@@ -463,11 +463,14 @@ const handleSuccessfulPurchase = async (req, res) => {
 
     if (result === false) return sendPaymentMessage('wrong user id', res);
 
-    let credit = result.credit;
-    credit += qty;
-    result = await redisClient.hSet(userId, 'credit', credit);
+
+    let credit = Number(result.credit);
+    credit += Number(qty);
+    console.log('handleSuccessfulPurchase redis set ', userId, credit);
     
-    sendPaymentMessage('Success: Tokens added.', res, false);
+    result = await redisClient.hSet(userId, 'credit', credit.toString());
+    
+    sendPaymentMessage('Success: Thank you for your purchase.', res, false);
 }
 
 
