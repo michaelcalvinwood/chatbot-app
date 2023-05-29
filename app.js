@@ -81,8 +81,7 @@ const handleSuppliedToken = (bt, res) => {
     return token
 }
 
-
-const getUserStats = async userId => {
+const getUserRedisStats = async userId => {
     let result;
 
     console.log('getUserStats userId', userId);
@@ -97,6 +96,8 @@ const getUserStats = async userId => {
     
     const numKeys = Object.keys(result).length;
 
+    console.log('numKeys', numKeys);
+
     if (numKeys) return {
         credit: Number(result.credit),
         date: result.date,
@@ -105,37 +106,46 @@ const getUserStats = async userId => {
         queries: Number(result.queries)
     }
 
-    if (!numKeys) {
-        let q = `SELECT credit, next_charge_date, max_storage_mb, upload_mb, queries FROM account WHERE user_id = '${userId}'`;
-        
-        try {
-            result = await mysql.query(configPool, q);
-        } catch (err) {
-            console.error(err);
-            return false;
-        }
+    return false;
+}
 
-        console.log('getUserStats userId, result', userId, result);
-        if (!result.length) return false;
+const getUserStats = async userId => {
+    let redisStats = await getUserRedisStats(userId);
+    console.log('getUserStats redisStats', redisStats);
 
-        const credit = result[0].credit;
-        const date = result[0].next_charge_date;
-        const storage = result[0].max_storage_mb;
-        const upload = result[0].upload_mb;
-        const queries = result[0].queries;
+    if (redisStats !== false) return redisStats;
 
-        try {
-            result = await redisClient.hSet(userId, 'credit', credit);
-            result = await redisClient.hSet(userId, 'date', date);
-            result = await redisClient.hSet(userId, 'storage', storage);
-            result = await redisClient.hSet(userId, 'upload', upload);
-            result = await redisClient.hSet(userId, 'queries', queries);
-            return {credit, date, storage, upload, queries};
-        } catch (err) {
-            console.error(err);
-            return {credit: Number(credit), date, storage: Number(storage), upload: Number(upload), queries: Number(queries)};
-        }
+    let q = `SELECT credit, next_charge_date, max_storage_mb, upload_mb, queries FROM account WHERE user_id = '${userId}'`;
+    
+    let result;
+    try {
+        result = await mysql.query(configPool, q);
+    } catch (err) {
+        console.error(err);
+        return false;
     }
+
+    console.log('getUserStats userId, result', userId, result);
+    if (!result.length) return false;
+
+    const credit = result[0].credit;
+    const date = result[0].next_charge_date;
+    const storage = result[0].max_storage_mb;
+    const upload = result[0].upload_mb;
+    const queries = result[0].queries;
+
+    try {
+        result = await redisClient.hSet(userId, 'credit', credit);
+        result = await redisClient.hSet(userId, 'date', date);
+        result = await redisClient.hSet(userId, 'storage', storage);
+        result = await redisClient.hSet(userId, 'upload', upload);
+        result = await redisClient.hSet(userId, 'queries', queries);
+    } catch (err) {
+        console.error(err);
+    }
+
+    return {credit: Number(credit), date, storage: Number(storage), upload: Number(upload), queries: Number(queries)};
+    
 }
 
 const getCreditsRemaining = async userId => {
@@ -397,7 +407,9 @@ const purchaseCredits = async (req, res) => {
     if (isNaN(quantity)) return res.status(400).json('bad request 2');
     if (isNaN(cost)) return res.status(400).json('bad request 3');
 
-    pendingPurchases[userId] = res;
+    const orderId = uuidv4();
+
+    pendingPurchases[orderId] = res;
 
     quantity = Math.trunc(Number(quantity));
 
@@ -408,8 +420,8 @@ const purchaseCredits = async (req, res) => {
             'card'
         ],
         mode: 'payment', // 'subscription' would be for recurring charges,
-        success_url: `https://app-${SERVER_SERIES}.instantchatbot.net:6250/successfulPurchase?qty=${quantity}&userId=${userId}&key=${ORDER_SECRET_KEY}`,
-        cancel_url: `https://app-${SERVER_SERIES}.instantchatbot.net:6250/failedPurchase?userId=${userId}&key=${ORDER_SECRET_KEY}`,
+        success_url: `https://app-${SERVER_SERIES}.instantchatbot.net:6250/successfulPurchase?qty=${quantity}&userId=${userId}&orderId=${orderId}`,
+        cancel_url: `https://app-${SERVER_SERIES}.instantchatbot.net:6250/failedPurchase?userId=${userId}&orderId=${orderId}`,
         line_items: [
             {
                 price_data: {
@@ -428,30 +440,34 @@ const purchaseCredits = async (req, res) => {
     
 }
 
+const sendPaymentMessage = async (msg, res, error = true) => {
+    if (error) return res.status(400).send(`https://instantchatbot.net/purchase/?status=error&msg=${encodeURIComponent(msg)}`);
+
+    return res.status(200).send(`https://instantchatbot.net/purchase/?status=success&msg=${encodeURIComponent(msg)}`);
+}
+
 const handleSuccessfulPurchase = async (req, res) => {
     console.log('handleSuccessfulPurchase', req.query, pendingPurchases);
 
-    return;
+    const { qty, userId, orderId } = req.query;
 
-    const { qty, userId, key } = req.query;
-
-    if (key !== ORDER_SECRET_KEY) {}
-
-    const secretKey = 'b498df3616de9697ded55df1618f4b7e196b0f770ec878098fda719aa9f0295d';
+    if (!orderId) return sendPaymentMessage('Error: missing orderId', res);
+    if (!pendingPurchases[orderId]) return sendPaymentMessage('Error: incorrect orderId', res);
+    
+    const purchase = pendingPurchases[orderId];
 
     let request, result;
 
-    request = {
-        url:`ht`
-    }
+    // force stats into redis if not already
+    result = await getUserStats(userId);
 
-    try {
-        result = await axios(request);
-    } catch (err) {
-        console.error(err);
-        return res.redirect('https://instantchatbot.net/purchase/?failedPurchase=true');
-    }
+    if (result === false) return sendPaymentMessage('wrong user id', res);
 
+    let credit = result.credit;
+    credit += qty;
+    result = await redisClient.hSet(userId, 'credit', credit);
+    
+    sendPaymentMessage('Success: Tokens added.', res, false);
 }
 
 
