@@ -214,7 +214,7 @@ const aiQuery = (req, res) => {
     return new Promise(async (resolve, reject) => {
         const { prompt, token } = req.body;
 
-        console.log(`${prompt}\n\n`);
+        console.log('aiQuery prompt',`${prompt}\n\n`);
         /*
          * TODO: Store the prompts in a database
          */
@@ -232,10 +232,10 @@ const aiQuery = (req, res) => {
             return resolve('error: invalid');
         }
 
-        console.log(decodedToken);
+        console.log('aiQuery decodedToken', decodedToken);
         const { botId, openAIKey, domains, serverSeries } = decodedToken;        
 
-        if (!botId || !openAIKey || !domains || !serverSeries) {
+        if (!botId || !openAIKey || !serverSeries) {
             res.status(401).json({error: 'invalid 3'});
             return resolve('error: invalid 3');
         }
@@ -244,11 +244,13 @@ const aiQuery = (req, res) => {
     
         const url = new URL(origin);
     
-        const test = decodedToken.domains ? decodedToken.domains.find(domain => domain === url.host) : null;
-    
-        if (!test) {
-            res.status(401).json({error: 'invalid request'});
-            return resolve('error: invalid request');
+        if (domains) {
+            const test = decodedToken.domains ? decodedToken.domains.find(domain => domain === url.host) : null;
+        
+            if (!test) {
+                res.status(401).json({error: 'invalid request'});
+                return resolve('error: invalid request');
+            }
         }
     
         //console.log(decodedToken);
