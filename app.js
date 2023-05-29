@@ -328,8 +328,8 @@ const addStorage = async (req, res) => {
     let queries = Number(stats.queries);
     let upload = Number(stats.upload);
 
-    storage += size;
-    upload += size;
+    storage += Number(size);
+    upload += Number(size);
 
     console.log('stats', stats);
 
@@ -340,7 +340,10 @@ const addStorage = async (req, res) => {
         return res.status(402).json({creditNeeded, creditsRemaining});
     }
 
-    res.status(510).json('debug');
+    result = await redisClient.hSet(userId, 'storage', storage.toString());
+    result = await redisClient.hSet(userId, 'upload', upload.toString());
+
+    res.status(200).json('success');
 }
 
 const handleAdminCommands = async () => {
@@ -467,7 +470,7 @@ const handleSuccessfulPurchase = async (req, res) => {
     let credit = Number(result.credit);
     credit += Number(qty);
     console.log('handleSuccessfulPurchase redis set ', userId, credit);
-    
+
     result = await redisClient.hSet(userId, 'credit', credit.toString());
     
     sendPaymentMessage('Success: Thank you for your purchase.', res, false);
