@@ -148,15 +148,18 @@ const getUserStats = async userId => {
     
 }
 
+const creditsRemainingFromUserStats = stats => {
+    const creditsUsed = (Math.ceil(stats.storage) * storageTokenCost) + (Math.ceil(stats.upload) * uploadCost) + (Math.ceil(stats.queries/100) * tokenCost);
+
+    return stats.credit - creditsUsed;
+}
+
 const getCreditsRemaining = async userId => {
     console.log('getCreditsRemaining userId', userId);
     const result = await getUserStats(userId);
-   if (result === false) return false;
+    if (result === false) return false;
 
-
-    const creditsUsed = (Math.ceil(result.storage) * storageTokenCost) + (Math.ceil(result.upload) * uploadCost) + (Math.ceil(result.queries/100) * tokenCost);
-
-    return result.credit - creditsUsed;
+    return creditsRemainingFromUserStats(result);
 }
 
 const getCreditNeeded = (botType, uploadSize, storageSize, queries) => {
@@ -244,7 +247,8 @@ const aiQuery = (req, res) => {
     
         const url = new URL(origin);
     
-        if (domains) {
+        if (domains.length) {
+            console.log('aiQuery checking domains', domains);
             const test = decodedToken.domains ? decodedToken.domains.find(domain => domain === url.host) : null;
         
             if (!test) {
@@ -264,7 +268,7 @@ const aiQuery = (req, res) => {
             return resolve('error: invalid request');
         }
 
-        console.log(contextIds);
+        console.log('aiQuery contextIds', contextIds);
 
         let q = `SELECT text FROM chunk WHERE chunk_id = '${contextIds[0]}'`;
 
@@ -481,8 +485,36 @@ const handleSuccessfulPurchase = async (req, res) => {
 
 handleAdminCommands();
 
+const chargeUpload = async (req, res) => {
+    const { token, uploadSize } = req.body;
+
+    console.log("TOKEN", token, uploadSize);
+
+    const tokenInfo = jwt.getToken(token);
+
+    if (tokenInfo === false) return res.status(400).json('bad request');
+
+    const { userId } = tokenInfo;
+
+    const stats = getUserStats(userId);
+
+    stats.upload += uploadSize;
+
+    try {
+        await redisClient.hSet(userId, 'upload', stats.upload);
+        const creditsRemaining = creditsRemainingFromUserStats(stats);
+        if (creditsRemaining >= 0) return res.status(200).send('ok');
+        return res.status(402).json({msg: 'insufficient credits', creditsRemaining});
+    } catch (err) {
+        console.error('chargeUpload ERROR: ', err);
+        return res.status(500).json('internal server error');
+    }
+
+}
+
 app.post('/ai-query', (req, res) => aiQuery(req, res));
 app.post('/addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
+app.post('/chargeUpload', (req, res) => chargeUpload(req, res));
 app.post('/availableCredits', (req, res) => getAvailableCredits(req, res));
 
 app.post('/purchaseCredits', (req, res) => purchaseCredits (req,res));
