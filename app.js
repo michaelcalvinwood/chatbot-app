@@ -490,26 +490,30 @@ const chargeUpload = async (req, res) => {
 
     console.log("TOKEN", token, uploadSize);
 
-    const tokenInfo = jwt.getToken(token);
+    const tokenInfo = jwtUtil.getToken(token);
 
     if (tokenInfo === false) return res.status(400).json('bad request');
 
     const { userId } = tokenInfo;
 
-    const stats = getUserStats(userId);
+    const stats = await getUserStats(userId);
 
-    stats.upload += uploadSize;
+    console.log('STATS BEFORE', stats);
+
+    stats.upload += (uploadSize / 1000000);
+
+    console.log('STATS AFTER', stats);
 
     try {
-        await redisClient.hSet(userId, 'upload', stats.upload);
+        await redisClient.hSet(userId, 'upload', stats.upload.toString());
         const creditsRemaining = creditsRemainingFromUserStats(stats);
+        console.log('CREDITS REMAINING', creditsRemaining);
         if (creditsRemaining >= 0) return res.status(200).send('ok');
         return res.status(402).json({msg: 'insufficient credits', creditsRemaining});
     } catch (err) {
         console.error('chargeUpload ERROR: ', err);
         return res.status(500).json('internal server error');
     }
-
 }
 
 app.post('/ai-query', (req, res) => aiQuery(req, res));
