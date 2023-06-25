@@ -516,9 +516,42 @@ const chargeUpload = async (req, res) => {
     }
 }
 
+const chargeStorage = async (req, res) => {
+    const { token, storageSize } = req.body;
+
+    console.log("TOKEN", token, uploadSize);
+
+    const tokenInfo = jwtUtil.getToken(token);
+
+    if (tokenInfo === false) return res.status(400).json('bad request');
+
+    const { userId } = tokenInfo;
+
+    const stats = await getUserStats(userId);
+
+    console.log('STATS BEFORE', stats);
+
+    stats.storage += (storageSize / 1000000);
+
+    console.log('STATS AFTER', stats);
+
+    try {
+        await redisClient.hSet(userId, 'storage', stats.storage.toString());
+        const creditsRemaining = creditsRemainingFromUserStats(stats);
+        console.log('CREDITS REMAINING', creditsRemaining);
+        if (creditsRemaining >= 0) return res.status(200).send('ok');
+        return res.status(402).json({msg: 'insufficient credits', creditsRemaining});
+    } catch (err) {
+        console.error('chargeUpload ERROR: ', err);
+        return res.status(500).json('internal server error');
+    }
+}
+
+
 app.post('/ai-query', (req, res) => aiQuery(req, res));
 app.post('/addStorage', (req, res) => adminCommands.push({command: 'addStorage', req, res}));
 app.post('/chargeUpload', (req, res) => chargeUpload(req, res));
+app.post('/chargeStorage', (req, res) => chargeStorage(req, res));
 app.post('/availableCredits', (req, res) => getAvailableCredits(req, res));
 
 app.post('/purchaseCredits', (req, res) => purchaseCredits (req,res));
